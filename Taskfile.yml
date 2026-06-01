@@ -7,6 +7,11 @@ tasks:
   build:cpu:
     desc: Build whisper.cpp (CPU static) and the binding
     cmds: [bash scripts/whispercpp.sh cpu, bash scripts/binding.sh]
+  build:cuda:
+    desc: Build whisper.cpp (CUDA, MSVC DLLs) and the binding — needs VS2022 + CUDA toolkit
+    cmds:
+      - cmd /c "scripts\\whispercpp-cuda.bat"
+      - bash scripts/binding.sh
   build: { desc: Alias for build:cpu, cmds: [{task: build:cpu}] }
   models:tiny:
     desc: Download the pinned ggml-tiny.en test model (SHA256-checked)
