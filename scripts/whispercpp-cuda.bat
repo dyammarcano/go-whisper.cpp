@@ -12,8 +12,13 @@ cmake -S whisper.cpp -B build-cuda -G Ninja ^
   -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 ^
   -DCMAKE_CUDA_COMPILER="%CUDA%\bin\nvcc.exe" ^
   -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
+  -DCMAKE_CUDA_FLAGS="-Xcompiler=/Zc:preprocessor" ^
+  -DCMAKE_C_FLAGS="/Zc:preprocessor" -DCMAKE_CXX_FLAGS="/Zc:preprocessor" ^
   -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=OFF ^
   -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF || exit /b 1
-cmake --build build-cuda --config Release --target whisper || exit /b 1
+REM Cap parallel jobs: the heavy fattn-vec hs256 CUDA template instances can fail
+REM (nvcc subprocess exit 1, no diagnostic) under full 8-way Ninja parallelism on
+REM CUDA 13 + arch 75. -j 4 builds them reliably.
+cmake --build build-cuda --config Release --target whisper -j 4 || exit /b 1
 echo === CUDA DLLs ===
 dir /s /b build-cuda\bin\*.dll
