@@ -7,6 +7,15 @@ SRC="whisper.cpp"; BUILD="$SRC/build-$BACKEND"
 
 EXTRA=""
 [ "$BACKEND" = "vulkan" ] && EXTRA="-DGGML_VULKAN=ON"
+
+# Vulkan: cmake's find_package(Vulkan) needs VULKAN_SDK. It is set at the Windows
+# user level by scoop; export a fallback for shells that didn't inherit it.
+if [ "$BACKEND" = "vulkan" ] && [ -z "${VULKAN_SDK:-}" ]; then
+  if [ -d "$HOME/scoop/apps/vulkan/current" ]; then
+    export VULKAN_SDK="$HOME/scoop/apps/vulkan/current"
+    echo "VULKAN_SDK fallback -> $VULKAN_SDK"
+  fi
+fi
 # Prefer Ninja (fast; installed via scoop on the dev box, and the toolchain has no
 # mingw32-make). Fall back to a platform make generator only if ninja is absent.
 if command -v ninja >/dev/null 2>&1; then

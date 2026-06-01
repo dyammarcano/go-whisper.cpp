@@ -12,6 +12,11 @@ tasks:
     cmds:
       - cmd /c "scripts\\whispercpp-cuda.bat"
       - bash scripts/binding.sh
+  build:vulkan:
+    desc: Build whisper.cpp (Vulkan, MinGW static) and the binding — needs the Vulkan SDK
+    cmds:
+      - bash scripts/whispercpp.sh vulkan
+      - bash scripts/binding.sh
   build: { desc: Alias for build:cpu, cmds: [{task: build:cpu}] }
   models:tiny:
     desc: Download the pinned ggml-tiny.en test model (SHA256-checked)
