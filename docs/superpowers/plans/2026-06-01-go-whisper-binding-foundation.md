@@ -263,9 +263,15 @@ BACKEND="${1:-cpu}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 SRC="whisper.cpp"; BUILD="$SRC/build-$BACKEND"
 
-GEN="Unix Makefiles"; EXTRA=""
-case "$(uname -s)" in MINGW*|MSYS*) GEN="MinGW Makefiles";; esac
+EXTRA=""
 [ "$BACKEND" = "vulkan" ] && EXTRA="-DGGML_VULKAN=ON"
+# Prefer Ninja (fast; installed via scoop on the dev box, and the toolchain has no
+# mingw32-make). Fall back to a platform make generator only if ninja is absent.
+if command -v ninja >/dev/null 2>&1; then
+  GEN="Ninja"
+else
+  case "$(uname -s)" in MINGW*|MSYS*) GEN="MinGW Makefiles";; *) GEN="Unix Makefiles";; esac
+fi
 
 # MinGW workaround (same as go-llama): gate THREAD_POWER_THROTTLING_STATE.
 WINVER=""
@@ -284,7 +290,7 @@ cmake -S "$SRC" -B "$BUILD" -G "$GEN" \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
   -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF \
   -DWHISPER_SDL2=OFF -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=OFF $EXTRA \
-  ${WINVER:+-DCMAKE_C_FLAGS="$WINVER" -DCMAKE_CXX_FLAGS="$WINVER"}
+  ${WINVER:+-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_FLAGS="$WINVER" -DCMAKE_CXX_FLAGS="$WINVER"}
 cmake --build "$BUILD" -j
 echo "=== $BACKEND static libs ==="; find "$BUILD" -name '*.a' | sort
 ```
@@ -710,11 +716,13 @@ Create `callback.go`:
 ```go
 package whisper
 
-// The preamble needs <stdint.h> so cgo can resolve C.uintptr_t / C.int64_t used in
-// the //export signatures below. binding.cpp declares these funcs itself (it is
-// compiled outside cgo), so NO extern decls are needed here. import "C" is required
-// for //export to take effect.
-//
+// IMPORTANT cgo rule: the C preamble is the comment block IMMEDIATELY above `import "C"`
+// with NO blank line between them. cgo breaks comment groups only on a TRUE blank line
+// (not on an empty `//` line). So prose must be a SEPARATE comment group, separated from
+// the preamble by a real blank line — otherwise the prose is fed to the C compiler and
+// fails ("unknown type name 'The'"). goWhisper* are exported to C via //export below;
+// binding.cpp declares them itself (compiled outside cgo), so no extern decls here.
+
 // #include <stdint.h>
 import "C"
 
@@ -796,8 +804,13 @@ Create `link_static_windows.go`:
 
 package whisper
 
-// #cgo LDFLAGS: -L${SRCDIR}/whisper.cpp/build-cpu/src -L${SRCDIR}/whisper.cpp/build-cpu/ggml/src
-// #cgo LDFLAGS: -Wl,--start-group -lwhisper -lggml -lggml-cpu -lggml-base -Wl,--end-group -lstdc++ -lm
+// ggml static archives are emitted WITHOUT a lib prefix (ggml.a, ggml-base.a,
+// ggml-cpu.a), so -lggml would NOT resolve — give them by FULL PATH. Only
+// libwhisper.a has the prefix. --start-group resolves whisper<->ggml circular refs.
+// VERIFIED on the dev box: this exact line links + runs whisper_bind_lang_max_id() (=99).
+// (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
+
+// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-cpu/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-base.a -Wl,--end-group -fopenmp -lstdc++ -lm
 import "C"
 ```
 Create `link_linux.go`:
@@ -806,8 +819,11 @@ Create `link_linux.go`:
 
 package whisper
 
-// #cgo LDFLAGS: -L${SRCDIR}/whisper.cpp/build-cpu/src -L${SRCDIR}/whisper.cpp/build-cpu/ggml/src
-// #cgo LDFLAGS: -Wl,--start-group -lwhisper -lggml -lggml-cpu -lggml-base -Wl,--end-group -lstdc++ -lm -lpthread -ldl
+// Same cmake layout as Windows: ggml*.a have no lib prefix -> full paths. Linux adds
+// -lpthread -ldl. CI (ubuntu runner) validates this exact line.
+// (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
+
+// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-cpu/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-base.a -Wl,--end-group -fopenmp -lstdc++ -lm -lpthread -ldl
 import "C"
 ```
 Create `link_darwin.go`:
@@ -816,12 +832,19 @@ Create `link_darwin.go`:
 
 package whisper
 
-// #cgo LDFLAGS: -L${SRCDIR}/whisper.cpp/build-cpu/src -L${SRCDIR}/whisper.cpp/build-cpu/ggml/src
-// #cgo LDFLAGS: -lwhisper -lggml -lggml-cpu -lggml-base -lstdc++
+// macOS: ggml*.a have no lib prefix -> full paths. ld64 has no --start-group; list in
+// dependency order (whisper -> ggml-cpu -> ggml -> ggml-base). NOTE: the default macOS
+// ggml build also enables the Metal + BLAS backends, which emit ADDITIONAL archives
+// (ggml-metal.a, ggml-blas.a) under build-cpu/ggml/src/ and need the Metal/MetalKit/
+// Accelerate frameworks. The macos CI runner validates this; if those archives are
+// present the implementer adds them to this list (full Metal wiring is in the GPU plan).
+// (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
+
+// #cgo LDFLAGS: ${SRCDIR}/whisper.cpp/build-cpu/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-base.a -lstdc++
 // #cgo LDFLAGS: -framework Accelerate -framework Metal -framework MetalKit -framework Foundation
 import "C"
 ```
-> Note: on macOS, the default CPU build still links the Metal framework (whisper.cpp's default ggml-metal backend). If a pure-CPU macOS build is needed, a `!metal` variant can be added in the GPU plan.
+> The Windows line above is confirmed working end-to-end on the dev machine (a C harness calling `whisper_bind_lang_max_id` links against these archives + `libbinding.a` and runs). Linux/macOS lines are validated by their CI runners.
 
 - [ ] **Step 5: Commit**
 
@@ -963,6 +986,14 @@ func defaultTranscribeOptions() transcribeOptions {
 		suppressNST:   true,
 		bestOf:        2,
 		beamSize:      5,
+		// CRITICAL: mirror whisper_full_default_params' float thresholds. The C shim's
+		// build_params applies these unconditionally, so leaving them at Go zero-values
+		// clobbers whisper.cpp's defaults — logProbThold=0.0 makes whisper reject every
+		// decode as failed and emit ZERO segments. Verified against v1.7.4.
+		temperatureInc: 0.2,
+		entropyThold:   2.4,
+		logProbThold:   -1.0,
+		noSpeechThold:  0.6,
 	}
 }
 ```
