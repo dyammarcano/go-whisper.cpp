@@ -2,13 +2,13 @@
 
 package whisper
 
-// macOS: ggml*.a have no lib prefix -> full paths. ld64 has no --start-group; list in
-// dependency order (whisper -> ggml-cpu -> ggml -> ggml-base). NOTE: the default macOS
-// ggml build also enables the Metal + BLAS backends, which emit ADDITIONAL archives
-// (ggml-metal.a, ggml-blas.a) under build-cpu/ggml/src/ and need the Metal/MetalKit/
-// Accelerate frameworks. The macos CI runner validates this; if those archives are
-// present the implementer adds them to this list (full Metal wiring is in the GPU plan).
+// macOS default build enables Metal + Apple BLAS, producing ggml-metal.a + ggml-blas.a.
+// GGML_METAL_EMBED_LIBRARY is ON by default, so the .metal shader is embedded in
+// ggml-metal.a (no default.metallib needed at runtime). ld64 has no --start-group; list
+// archives in dependency order. Frameworks: Foundation/Metal/MetalKit (ggml-metal),
+// Accelerate (ggml-blas), QuartzCore (Metal runtime).
+// (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
 
-// #cgo LDFLAGS: ${SRCDIR}/whisper.cpp/build-cpu/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-base.a -lstdc++
-// #cgo LDFLAGS: -framework Accelerate -framework Metal -framework MetalKit -framework Foundation
+// #cgo LDFLAGS: ${SRCDIR}/whisper.cpp/build-cpu/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-metal.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-blas.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-cpu/ggml/src/ggml-base.a -lstdc++
+// #cgo LDFLAGS: -framework Foundation -framework Metal -framework MetalKit -framework Accelerate -framework QuartzCore
 import "C"
