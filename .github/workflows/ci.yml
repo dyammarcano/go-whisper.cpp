@@ -36,3 +36,31 @@ jobs:
         uses: golangci/golangci-lint-action@v6
         env: { CGO_ENABLED: '1' }
         with: { version: latest }
+  gpu-build:
+    # Build/link-verify GPU tags. GitHub-hosted runners have NO GPU, so this proves the
+    # cgo build + link, not execution. Run GPU *execution* tests on a self-hosted runner.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.25' }
+      - uses: arduino/setup-task@v2
+        with: { version: 3.x, repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Setup MinGW + CMake
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake make
+      - name: Install Vulkan SDK
+        uses: humbletim/install-vulkan-sdk@v1.2
+        with: { version: latest, cache: true }
+      - name: Build + link-verify Vulkan
+        env: { CC: gcc, CXX: g++ }
+        run: |
+          task build:vulkan
+          go build -tags vulkan ./...
+      # NOTE: CUDA build-verify needs the CUDA toolkit + MSVC on the runner; deferred to a
+      # self-hosted GPU runner (it also runs the GPU execution tests). Documented in README.
