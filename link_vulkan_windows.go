@@ -8,5 +8,5 @@ package whisper
 // whisper<->ggml<->ggml-vulkan circular refs. Run `task build:vulkan` first.
 // (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
 
-// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-vulkan/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-vulkan.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-base.a -Wl,--end-group C:/Windows/System32/vulkan-1.dll -fopenmp -lstdc++ -lm
+// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-vulkan/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-base.a -Wl,--end-group C:/Windows/System32/vulkan-1.dll -fopenmp -lstdc++ -lm
 import "C"

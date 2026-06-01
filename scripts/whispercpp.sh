@@ -10,9 +10,15 @@ EXTRA=""
 
 # Vulkan: cmake's find_package(Vulkan) needs VULKAN_SDK. It is set at the Windows
 # user level by scoop; export a fallback for shells that didn't inherit it.
+# cmake on Windows needs a NATIVE path (C:/...), not the MSYS form (/c/...), so
+# convert via cygpath when available.
 if [ "$BACKEND" = "vulkan" ] && [ -z "${VULKAN_SDK:-}" ]; then
   if [ -d "$HOME/scoop/apps/vulkan/current" ]; then
-    export VULKAN_SDK="$HOME/scoop/apps/vulkan/current"
+    if command -v cygpath >/dev/null 2>&1; then
+      export VULKAN_SDK="$(cygpath -m "$HOME/scoop/apps/vulkan/current")"
+    else
+      export VULKAN_SDK="$HOME/scoop/apps/vulkan/current"
+    fi
     echo "VULKAN_SDK fallback -> $VULKAN_SDK"
   fi
 fi
