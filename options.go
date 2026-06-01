@@ -54,6 +54,14 @@ func defaultTranscribeOptions() transcribeOptions {
 		suppressNST:   true,
 		bestOf:        2,
 		beamSize:      5,
+		// Mirror whisper.cpp's whisper_full_default_params thresholds. The C shim
+		// applies these unconditionally, so leaving them at Go zero values would
+		// clobber whisper's sane defaults — in particular logProbThold=0 rejects
+		// every decode as failed, yielding zero segments.
+		temperatureInc: 0.2,
+		entropyThold:   2.4,
+		logProbThold:   -1.0,
+		noSpeechThold:  0.6,
 	}
 }
 
