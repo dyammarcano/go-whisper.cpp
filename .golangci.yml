@@ -1,0 +1,32 @@
+version: "2"
+run:
+  timeout: 2m
+linters:
+  default: all
+  disable:
+    - cyclop
+    - depguard
+    - dupl
+    - err113
+    - exhaustruct
+    - funlen
+    - gochecknoglobals
+    - gochecknoinits
+    - gocognit
+    - gocyclo
+    - godot
+    - godox
+    - gosec
+    - ireturn
+    - lll
+    - mnd
+    - nestif
+    - nlreturn
+    - nonamedreturns
+    - paralleltest
+    - revive
+    - tagliatelle
+    - testpackage
+    - varnamelen
+    - wrapcheck
+    - wsl
