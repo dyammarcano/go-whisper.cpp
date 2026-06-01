@@ -1,0 +1,38 @@
+name: ci
+on: [push, pull_request]
+jobs:
+  build-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.25' }
+      - name: Install Task
+        uses: arduino/setup-task@v2
+        with: { version: 3.x, repo-token: "${{ secrets.GITHUB_TOKEN }}" }
+      - name: Setup MinGW + CMake (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          path-type: inherit
+          install: >-
+            mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake make
+      - name: Build whisper.cpp + binding (CPU)
+        env: { CC: gcc, CXX: g++ }
+        run: task build:cpu
+      - name: Download test model
+        run: task models:tiny
+      - name: Test (race)
+        env:
+          TEST_MODEL: ${{ github.workspace }}/models/ggml-tiny.en.bin
+        run: go test -race ./... -v
+      - name: Lint
+        uses: golangci/golangci-lint-action@v6
+        env: { CGO_ENABLED: '1' }
+        with: { version: latest }
