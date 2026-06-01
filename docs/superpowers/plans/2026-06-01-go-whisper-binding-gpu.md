@@ -72,13 +72,18 @@ cmake -S whisper.cpp -B build-cuda -G Ninja ^
   -DGGML_CUDA=ON -DCMAKE_CUDA_ARCHITECTURES=75 ^
   -DCMAKE_CUDA_COMPILER="%CUDA%\bin\nvcc.exe" ^
   -DCMAKE_C_COMPILER=cl -DCMAKE_CXX_COMPILER=cl ^
+  -DCMAKE_CUDA_FLAGS="-Xcompiler=/Zc:preprocessor" ^
+  -DCMAKE_C_FLAGS="/Zc:preprocessor" -DCMAKE_CXX_FLAGS="/Zc:preprocessor" ^
   -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=OFF ^
   -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_SERVER=OFF || exit /b 1
-cmake --build build-cuda --config Release --target whisper || exit /b 1
+REM Cap parallel jobs: the heavy fattn-vec hs256 CUDA template instances can fail
+REM (nvcc subprocess exit 1, no diagnostic) under full 8-way Ninja parallelism on
+REM CUDA 13 + arch 75. -j 4 builds them reliably.
+cmake --build build-cuda --config Release --target whisper -j 4 || exit /b 1
 echo === CUDA DLLs ===
 dir /s /b build-cuda\bin\*.dll
 ```
-> Mirrors go-llama's proven Ninja flow (`--target whisper`, explicit `nvcc` path; `-T` is VS-generator-only and not used with Ninja). If Ninja+CUDA13 fails at configure, the fallback is the VS generator (`-G "Visual Studio 17 2022" -A x64 -T "cuda=%CUDA%"`), which puts DLLs in `build-cuda\bin\Release\` — Task 2's link path would then need the `Release\` segment. Try Ninja first (precedent).
+> VERIFIED on the dev box (CUDA 13.3 + VS2022 + arch 75): builds all 5 DLLs; `go build -tags cuda` links; the GPU smoke test transcribes on the GPU. Two CUDA-13-specific flags are MANDATORY: `/Zc:preprocessor` (CUDA 13's CCCL headers `#error` on MSVC's legacy preprocessor) and `-j 4` (the `fattn-vec hs256` flash-attn templates fail under full 8-way Ninja). Mirrors go-llama's Ninja flow otherwise. If a future toolchain breaks Ninja configure, the fallback is the VS generator (`-G "Visual Studio 17 2022" -A x64 -T "cuda=%CUDA%"`) → DLLs in `build-cuda\bin\Release\`, requiring the `Release\` segment in Task 2's link path.
 
 - [ ] **Step 2: Add `build:cuda` to `Taskfile.yml`**
 
@@ -234,13 +239,20 @@ The foundation `whispercpp.sh` already handles the `vulkan` arg (`EXTRA="-DGGML_
 ```bash
 # Vulkan: cmake's find_package(Vulkan) needs VULKAN_SDK. It is set at the Windows
 # user level by scoop; export a fallback for shells that didn't inherit it.
+# cmake on Windows needs a NATIVE path (C:/...), not the MSYS form (/c/...), so
+# convert via cygpath when available.
 if [ "$BACKEND" = "vulkan" ] && [ -z "${VULKAN_SDK:-}" ]; then
   if [ -d "$HOME/scoop/apps/vulkan/current" ]; then
-    export VULKAN_SDK="$HOME/scoop/apps/vulkan/current"
+    if command -v cygpath >/dev/null 2>&1; then
+      export VULKAN_SDK="$(cygpath -m "$HOME/scoop/apps/vulkan/current")"
+    else
+      export VULKAN_SDK="$HOME/scoop/apps/vulkan/current"
+    fi
     echo "VULKAN_SDK fallback -> $VULKAN_SDK"
   fi
 fi
 ```
+> VERIFIED: without `cygpath -m`, cmake 4.3's FindVulkan fails ("Could NOT find Vulkan") on the MSYS path. With it: "Found Vulkan: …/Lib/vulkan-1.lib (version 1.4.350)".
 
 - [ ] **Step 2: Add `build:vulkan` to `Taskfile.yml`**
 
@@ -267,10 +279,10 @@ package whisper
 // whisper<->ggml<->ggml-vulkan circular refs. Run `task build:vulkan` first.
 // (Blank line below is REQUIRED so this prose is not part of the cgo preamble.)
 
-// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-vulkan/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-vulkan.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-base.a -Wl,--end-group C:/Windows/System32/vulkan-1.dll -fopenmp -lstdc++ -lm
+// #cgo LDFLAGS: -Wl,--start-group ${SRCDIR}/whisper.cpp/build-vulkan/src/libwhisper.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-vulkan/ggml-vulkan.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-cpu.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml.a ${SRCDIR}/whisper.cpp/build-vulkan/ggml/src/ggml-base.a -Wl,--end-group C:/Windows/System32/vulkan-1.dll -fopenmp -lstdc++ -lm
 import "C"
 ```
-> The Vulkan loader is linked via the system `vulkan-1.dll` directly (MinGW ld accepts a `.dll`), avoiding the MinGW-vs-MSVC `vulkan-1.lib` question. SPIKE in Task 5: if the lib names differ from this list, correct them from the actual `ls build-vulkan/ggml/src/*.a`.
+> The Vulkan loader is linked via the system `vulkan-1.dll` directly (MinGW ld accepts a `.dll`), avoiding the MinGW-vs-MSVC `vulkan-1.lib` question. VERIFIED on the dev box: `ggml-vulkan.a` lands in a **nested** subdir (`ggml/src/ggml-vulkan/ggml-vulkan.a`), unlike the other ggml archives — the path above reflects that.
 
 - [ ] **Step 4: Commit** (no build yet)
 
