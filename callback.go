@@ -4,7 +4,7 @@ package whisper
 // the //export signatures below. binding.cpp declares these funcs itself (it is
 // compiled outside cgo), so NO extern decls are needed here. import "C" is required
 // for //export to take effect.
-//
+
 // #include <stdint.h>
 import "C"
 
