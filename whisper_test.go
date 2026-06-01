@@ -3,6 +3,7 @@ package whisper_test
 import (
 	"context"
 	"os"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -30,7 +31,7 @@ var _ = Describe("whisper binding", func() {
 		}
 		m, err := whisper.New(modelPath)
 		Expect(err).NotTo(HaveOccurred())
-		defer m.Close()
+		defer func() { _ = m.Close() }()
 
 		samples, err := wav.ReadFile(audioPath)
 		Expect(err).NotTo(HaveOccurred())
@@ -38,11 +39,46 @@ var _ = Describe("whisper binding", func() {
 		res, err := m.Transcribe(context.Background(), samples, whisper.WithLanguage("en"))
 		Expect(err).NotTo(HaveOccurred())
 		Expect(res.Segments).NotTo(BeEmpty())
-		full := ""
+		var full strings.Builder
 		for _, s := range res.Segments {
-			full += s.Text
+			full.WriteString(s.Text)
 		}
-		Expect(full).To(ContainSubstring("country")) // jfk.wav: "...what you can do for your country"
+		Expect(full.String()).To(ContainSubstring("country")) // jfk.wav: "...what you can do for your country"
+	})
+
+	It("produces non-zero monotonic timestamps", func() {
+		if modelPath == "" {
+			Skip("set TEST_MODEL")
+		}
+		m, err := whisper.New(modelPath)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = m.Close() }()
+		samples, err := wav.ReadFile("whisper.cpp/samples/jfk.wav")
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := m.Transcribe(context.Background(), samples, whisper.WithLanguage("en"))
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Segments).NotTo(BeEmpty())
+		// Locks the centisecond->Duration (x10ms) conversion: end > start > 0.
+		Expect(res.Segments[0].End).To(BeNumerically(">", res.Segments[0].Start))
+		Expect(res.Segments[0].End).To(BeNumerically(">", time.Duration(0)))
+	})
+
+	It("emits token timestamps", func() {
+		if modelPath == "" {
+			Skip("set TEST_MODEL")
+		}
+		m, err := whisper.New(modelPath)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = m.Close() }()
+		samples, err := wav.ReadFile("whisper.cpp/samples/jfk.wav")
+		Expect(err).NotTo(HaveOccurred())
+
+		res, err := m.Transcribe(context.Background(), samples,
+			whisper.WithLanguage("en"), whisper.WithTokenTimestamps)
+		Expect(err).NotTo(HaveOccurred())
+		Expect(res.Segments).NotTo(BeEmpty())
+		Expect(res.Segments[0].Tokens).ToNot(BeEmpty())
 	})
 
 	It("cancels an in-flight transcription", func() {
@@ -51,7 +87,7 @@ var _ = Describe("whisper binding", func() {
 		}
 		m, err := whisper.New(modelPath)
 		Expect(err).NotTo(HaveOccurred())
-		defer m.Close()
+		defer func() { _ = m.Close() }()
 		samples, err := wav.ReadFile("whisper.cpp/samples/jfk.wav")
 		Expect(err).NotTo(HaveOccurred())
 
@@ -61,30 +97,50 @@ var _ = Describe("whisper binding", func() {
 		Expect(err).To(MatchError(whisper.ErrCanceled))
 	})
 
+	It("cancels mid-inference within a bound", func() {
+		if modelPath == "" {
+			Skip("set TEST_MODEL")
+		}
+		m, err := whisper.New(modelPath)
+		Expect(err).NotTo(HaveOccurred())
+		defer func() { _ = m.Close() }()
+		samples, err := wav.ReadFile("whisper.cpp/samples/jfk.wav")
+		Expect(err).NotTo(HaveOccurred())
+
+		ctx, cancel := context.WithCancel(context.Background())
+		time.AfterFunc(50*time.Millisecond, cancel)
+		errCh := make(chan error, 1)
+		go func() {
+			_, e := m.Transcribe(ctx, samples, whisper.WithLanguage("en"))
+			errCh <- e
+		}()
+		Eventually(errCh, 10*time.Second).Should(Receive(MatchError(whisper.ErrCanceled)))
+	})
+
 	It("runs concurrent sessions over one model", func() {
 		if modelPath == "" {
 			Skip("set TEST_MODEL")
 		}
 		m, err := whisper.New(modelPath)
 		Expect(err).NotTo(HaveOccurred())
-		defer m.Close()
+		defer func() { _ = m.Close() }()
 		samples, err := wav.ReadFile("whisper.cpp/samples/jfk.wav")
 		Expect(err).NotTo(HaveOccurred())
 
 		done := make(chan error, 3)
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			go func() {
 				s, e := m.NewSession()
 				if e != nil {
 					done <- e
 					return
 				}
-				defer s.Close()
+				defer func() { _ = s.Close() }()
 				_, e = s.Transcribe(context.Background(), samples, whisper.WithLanguage("en"))
 				done <- e
 			}()
 		}
-		for i := 0; i < 3; i++ {
+		for range 3 {
 			Eventually(done, 60*time.Second).Should(Receive(BeNil()))
 		}
 	})

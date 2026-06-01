@@ -40,7 +40,7 @@ func ReadFile(path string) ([]float32, error) {
 func ReadWAV(r io.Reader) ([]float32, error) {
 	var riff [12]byte
 	if _, err := io.ReadFull(r, riff[:]); err != nil {
-		return nil, fmt.Errorf("%w: %v", ErrBadHeader, err)
+		return nil, fmt.Errorf("%w: %w", ErrBadHeader, err)
 	}
 	if string(riff[0:4]) != "RIFF" || string(riff[8:12]) != "WAVE" {
 		return nil, ErrBadHeader
@@ -135,10 +135,10 @@ func decodeSamples(data []byte, fc *fmtChunk) ([]float32, error) {
 		return nil, fmt.Errorf("%w: fmt=%d bits=%d", ErrUnsupportedFmt, fc.audioFormat, fc.bitsPerSample)
 	}
 
-	for f := 0; f < frames; f++ {
+	for f := range frames {
 		base := f * blockAlign
 		var sum float32
-		for c := 0; c < ch; c++ {
+		for c := range ch {
 			off := base + c*bps
 			sum += conv(data[off : off+bps])
 		}

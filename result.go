@@ -32,6 +32,9 @@ func csToDuration(cs int64) time.Duration { return time.Duration(cs) * 10 * time
 
 // marshalResult converts a C whisper_bind_result into a Go Result and frees the C memory.
 func marshalResult(ptr unsafe.Pointer) *Result {
+	if ptr == nil {
+		return &Result{}
+	}
 	r := (*C.whisper_bind_result)(ptr)
 	defer C.whisper_bind_free_result(r)
 
@@ -41,7 +44,7 @@ func marshalResult(ptr unsafe.Pointer) *Result {
 		return res
 	}
 	segs := unsafe.Slice(r.segments, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		cs := segs[i]
 		seg := Segment{
 			Start: csToDuration(int64(cs.t0)),
@@ -51,7 +54,7 @@ func marshalResult(ptr unsafe.Pointer) *Result {
 		if nt := int(cs.n_tokens); nt > 0 && cs.tokens != nil {
 			toks := unsafe.Slice(cs.tokens, nt)
 			seg.Tokens = make([]Token, nt)
-			for j := 0; j < nt; j++ {
+			for j := range nt {
 				seg.Tokens[j] = Token{
 					Text:  C.GoString(toks[j].text),
 					P:     float32(toks[j].p),

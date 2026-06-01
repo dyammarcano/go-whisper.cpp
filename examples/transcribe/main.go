@@ -12,6 +12,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	model := flag.String("m", "models/ggml-tiny.en.bin", "path to ggml model")
 	audio := flag.String("f", "whisper.cpp/samples/jfk.wav", "path to 16 kHz mono WAV")
 	lang := flag.String("l", "auto", "language ('auto' to detect)")
@@ -21,15 +28,13 @@ func main() {
 
 	m, err := whisper.New(*model)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "load model:", err)
-		os.Exit(1)
+		return fmt.Errorf("load model: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
 
 	samples, err := wav.ReadFile(*audio)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "read wav:", err)
-		os.Exit(1)
+		return fmt.Errorf("read wav: %w", err)
 	}
 
 	opts := []whisper.TranscribeOption{whisper.WithLanguage(*lang), whisper.WithThreads(*threads)}
@@ -38,11 +43,11 @@ func main() {
 	}
 	res, err := m.Transcribe(context.Background(), samples, opts...)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "transcribe:", err)
-		os.Exit(1)
+		return fmt.Errorf("transcribe: %w", err)
 	}
-	fmt.Printf("[language: %s]\n", res.Language)
+	_, _ = fmt.Fprintf(os.Stdout, "[language: %s]\n", res.Language)
 	for _, s := range res.Segments {
-		fmt.Printf("[%s -> %s] %s\n", s.Start, s.End, s.Text)
+		_, _ = fmt.Fprintf(os.Stdout, "[%s -> %s] %s\n", s.Start, s.End, s.Text)
 	}
+	return nil
 }

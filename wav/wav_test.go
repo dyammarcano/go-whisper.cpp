@@ -13,22 +13,24 @@ import (
 // buildWAV creates a minimal PCM16 WAV in memory.
 func buildWAV(sampleRate uint32, channels uint16, samples []int16) []byte {
 	var b bytes.Buffer
+	// *bytes.Buffer never errors, so muting binary.Write/WriteString returns is correct.
+	le := func(v any) { _ = binary.Write(&b, binary.LittleEndian, v) }
 	dataLen := len(samples) * 2
-	b.WriteString("RIFF")
-	binary.Write(&b, binary.LittleEndian, uint32(36+dataLen))
-	b.WriteString("WAVE")
-	b.WriteString("fmt ")
-	binary.Write(&b, binary.LittleEndian, uint32(16))
-	binary.Write(&b, binary.LittleEndian, uint16(1)) // PCM
-	binary.Write(&b, binary.LittleEndian, channels)
-	binary.Write(&b, binary.LittleEndian, sampleRate)
-	binary.Write(&b, binary.LittleEndian, sampleRate*uint32(channels)*2) // byte rate
-	binary.Write(&b, binary.LittleEndian, channels*2)                    // block align
-	binary.Write(&b, binary.LittleEndian, uint16(16))                    // bits
-	b.WriteString("data")
-	binary.Write(&b, binary.LittleEndian, uint32(dataLen))
+	_, _ = b.WriteString("RIFF")
+	le(uint32(36 + dataLen))
+	_, _ = b.WriteString("WAVE")
+	_, _ = b.WriteString("fmt ")
+	le(uint32(16))
+	le(uint16(1)) // PCM
+	le(channels)
+	le(sampleRate)
+	le(sampleRate * uint32(channels) * 2) // byte rate
+	le(channels * 2)                      // block align
+	le(uint16(16))                        // bits
+	_, _ = b.WriteString("data")
+	le(uint32(dataLen))
 	for _, s := range samples {
-		binary.Write(&b, binary.LittleEndian, s)
+		le(s)
 	}
 	return b.Bytes()
 }

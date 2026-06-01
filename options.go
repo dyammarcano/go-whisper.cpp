@@ -68,6 +68,9 @@ func defaultTranscribeOptions() transcribeOptions {
 // WithGPU enables/disables GPU offload (default off).
 func WithGPU(on bool) ModelOption { return func(o *modelOptions) { o.gpu = on } }
 
+// WithoutGPU disables GPU offload (default; explicit opt-out).
+var WithoutGPU ModelOption = func(o *modelOptions) { o.gpu = false }
+
 // WithGPUDevice selects the GPU device index.
 func WithGPUDevice(d int) ModelOption { return func(o *modelOptions) { o.gpuDevice = d } }
 
@@ -133,7 +136,8 @@ func WithDuration(d time.Duration) TranscribeOption {
 }
 func WithAudioCtx(n int) TranscribeOption { return func(o *transcribeOptions) { o.audioCtx = n } }
 
-// suppress_blank / suppress_nst default to true (see defaultTranscribeOptions); pass false to disable.
+// WithSuppressBlank toggles suppress_blank (default true; pass false to disable).
+// suppress_blank / suppress_nst default to true (see defaultTranscribeOptions).
 func WithSuppressBlank(on bool) TranscribeOption {
 	return func(o *transcribeOptions) { o.suppressBlank = on }
 }

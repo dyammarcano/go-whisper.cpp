@@ -106,9 +106,11 @@ extern "C" whisper_bind_result* whisper_bind_get_result(void* ctx, void* state, 
     struct whisper_state*   s = (struct whisper_state*)state;
     int n = s ? whisper_full_n_segments_from_state(s) : whisper_full_n_segments(c);
     whisper_bind_result* r = (whisper_bind_result*)calloc(1, sizeof(whisper_bind_result));
+    if (!r) return nullptr;
     r->n_segments = n;
     r->lang_id = s ? whisper_full_lang_id_from_state(s) : whisper_full_lang_id(c);
     r->segments = (whisper_bind_segment*)calloc(n > 0 ? (size_t)n : 1, sizeof(whisper_bind_segment));
+    if (!r->segments) { free(r); return nullptr; }
     for (int i = 0; i < n; ++i) {
         const char* txt = s ? whisper_full_get_segment_text_from_state(s, i) : whisper_full_get_segment_text(c, i);
         r->segments[i].t0   = s ? whisper_full_get_segment_t0_from_state(s, i) : whisper_full_get_segment_t0(c, i);
@@ -147,3 +149,4 @@ extern "C" void whisper_bind_free_result(whisper_bind_result* r) {
 extern "C" int         whisper_bind_lang_id(const char* lang) { return whisper_lang_id(lang); }
 extern "C" const char* whisper_bind_lang_str(int id)          { return whisper_lang_str(id); }
 extern "C" int         whisper_bind_lang_max_id(void)         { return whisper_lang_max_id(); }
+extern "C" int         whisper_bind_is_multilingual(void* ctx) { return whisper_is_multilingual((struct whisper_context*)ctx); }

@@ -64,6 +64,7 @@ void whisper_bind_free_result(whisper_bind_result* r);
 int         whisper_bind_lang_id(const char* lang);
 const char* whisper_bind_lang_str(int id);
 int         whisper_bind_lang_max_id(void);
+int         whisper_bind_is_multilingual(void* ctx);
 
 void whisper_bind_install_log(void);
 

@@ -9,5 +9,6 @@ import "log/slog"
 //
 //export goWhisperLog
 func goWhisperLog(level C.int, text *C.char) {
+	defer func() { _ = recover() }()
 	slog.Debug("whisper", "level", int(level), "msg", C.GoString(text))
 }

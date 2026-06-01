@@ -30,8 +30,8 @@ type callbackBridge struct {
 //export goWhisperSegment
 func goWhisperSegment(handle C.uintptr_t, t0 C.int64_t, t1 C.int64_t, text *C.char) {
 	defer recoverInto(handle)
-	b := cgo.Handle(uintptr(handle)).Value().(*callbackBridge)
-	if b.onSegment == nil {
+	b, ok := cgo.Handle(uintptr(handle)).Value().(*callbackBridge)
+	if !ok || b.onSegment == nil {
 		return
 	}
 	b.onSegment(Segment{
@@ -44,14 +44,22 @@ func goWhisperSegment(handle C.uintptr_t, t0 C.int64_t, t1 C.int64_t, text *C.ch
 //export goWhisperProgress
 func goWhisperProgress(handle C.uintptr_t, progress C.int) {
 	defer recoverInto(handle)
-	b := cgo.Handle(uintptr(handle)).Value().(*callbackBridge)
-	if b.onProgress != nil {
+	b, ok := cgo.Handle(uintptr(handle)).Value().(*callbackBridge)
+	if ok && b.onProgress != nil {
 		b.onProgress(int(progress))
 	}
 }
 
 //export goWhisperAbort
-func goWhisperAbort(handle C.uintptr_t) C.int {
+func goWhisperAbort(handle C.uintptr_t) (ret C.int) {
+	defer func() {
+		if r := recover(); r != nil {
+			if b, ok := cgo.Handle(uintptr(handle)).Value().(*callbackBridge); ok {
+				storePanic(b, r)
+			}
+			ret = 1
+		}
+	}()
 	b, ok := cgo.Handle(uintptr(handle)).Value().(*callbackBridge)
 	if !ok || b.aborted == nil {
 		return 0
@@ -62,16 +70,21 @@ func goWhisperAbort(handle C.uintptr_t) C.int {
 	return 0
 }
 
-// recoverInto converts a panic inside a trampoline into a stored error + abort,
+// storePanic records a trampoline panic as a stored error and signals abort,
 // so a Go panic never unwinds into C (undefined behavior).
+func storePanic(b *callbackBridge, r any) {
+	err := panicToError(r)
+	b.panicErr.Store(&err)
+	if b.aborted != nil {
+		b.aborted.set()
+	}
+}
+
+// recoverInto converts a panic inside a trampoline into a stored error + abort.
 func recoverInto(handle C.uintptr_t) {
 	if r := recover(); r != nil {
 		if b, ok := cgo.Handle(uintptr(handle)).Value().(*callbackBridge); ok {
-			err := panicToError(r)
-			b.panicErr.Store(&err)
-			if b.aborted != nil {
-				b.aborted.set()
-			}
+			storePanic(b, r)
 		}
 	}
 }

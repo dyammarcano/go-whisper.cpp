@@ -111,6 +111,7 @@ func runFull(ctx context.Context, m *Model, session *Session, samples []float32,
 	if session != nil {
 		statePtr = session.state
 	}
+	//nolint:gocritic // dupSubExpr is a false positive on cgo-expanded args (&samples[0] vs len(samples)).
 	rc := C.whisper_bind_full(m.ptr, statePtr, &cp,
 		(*C.float)(unsafe.Pointer(&samples[0])), C.int(len(samples)))
 
@@ -119,7 +120,7 @@ func runFull(ctx context.Context, m *Model, session *Session, samples []float32,
 	}
 	if aborted.isSet() {
 		if err := ctx.Err(); err != nil {
-			return nil, fmt.Errorf("%w: %v", ErrCanceled, err)
+			return nil, fmt.Errorf("%w: %w", ErrCanceled, err)
 		}
 		return nil, ErrCanceled
 	}

@@ -15,6 +15,8 @@ import (
 
 // Model wraps a loaded whisper_context. Safe to share across goroutines by
 // creating one Session per goroutine. Close once when done.
+// Model.Transcribe is mutex-serialized (single-flight); for parallel
+// transcription create one Session per goroutine via NewSession.
 type Model struct {
 	ptr unsafe.Pointer // whisper_context*
 	mu  sync.Mutex     // guards the context's internal state for Model.Transcribe
@@ -67,6 +69,14 @@ func (m *Model) Languages() []string {
 		}
 	}
 	return out
+}
+
+// IsMultilingual reports whether the model supports languages other than English.
+func (m *Model) IsMultilingual() bool {
+	if m == nil || m.ptr == nil {
+		return false
+	}
+	return C.whisper_bind_is_multilingual(m.ptr) != 0
 }
 
 // langStr maps a language id to its name ("" if unknown).

@@ -17,11 +17,13 @@ linters:
     - godot
     - godox
     - gosec
+    - intrange
     - ireturn
     - lll
     - mnd
     - nestif
     - nlreturn
+    - noinlineerr
     - nonamedreturns
     - paralleltest
     - revive
@@ -30,3 +32,4 @@ linters:
     - varnamelen
     - wrapcheck
     - wsl
+    - wsl_v5
