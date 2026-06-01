@@ -1,1 +1,21 @@
 .scripts/
+
+# build artifacts
+/binding.o
+/libbinding.a
+/build-cuda/
+whisper.cpp/build-*/
+*.exe
+*.dll
+*.dylib
+*.so
+
+# models downloaded for tests
+/models/
+*.bin
+
+# os / editor
+.DS_Store
+.idea/
+.vscode/
+Thumbs.db
