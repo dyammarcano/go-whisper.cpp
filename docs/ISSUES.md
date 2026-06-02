@@ -19,12 +19,14 @@ libgomp + cgo-callback-during-parallel-region interaction.
 so ggml's native Win32 threadpool runs the compute. It aborts mid-graph cleanly. With this
 change the full 7-spec suite passes (0 skipped), cancellation included.
 
+**CUDA verified (2026-06-02):** the same suite incl. the mid-inference cancel spec passes
+on the CUDA build on a GTX 1650 (arch 75) — `8/8 specs, 0 skipped`. GPU inference offloads
+the aborted compute, so the OpenMP/`vcomp` teardown path is not reached on the CUDA backend;
+no fix was needed there.
+
 ## Open / residual risk
 
 - **Linux / macOS still build with OpenMP.** The same `abort_callback`-during-compute path
   exists on those platforms but has **not** been observed to crash, and CI only
   build-verifies (it does not run the audio-gated cancellation tests). If a mid-inference
   cancellation crash ever surfaces on Linux/macOS, apply the same `-DGGML_OPENMP=OFF` there.
-- **CUDA build (`scripts/whispercpp-cuda.bat`, MSVC) is untested for this path.** GPU
-  inference uses a different compute backend; the bundled `ggml-cpu` fallback still links
-  MSVC's OpenMP (`vcomp`). Not yet exercised by the cancellation tests.
