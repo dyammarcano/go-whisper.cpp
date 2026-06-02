@@ -21,6 +21,12 @@ tasks:
   models:tiny:
     desc: Download the pinned ggml-tiny.en test model (SHA256-checked)
     cmds: [bash scripts/download-model.sh tiny.en]
+  models:diarize:
+    desc: Download diarization models (pyannote seg-3.0 MIT + WeSpeaker embedding)
+    cmds: [bash scripts/download-diarize-models.sh]
+  diarize:dlls:
+    desc: Copy sherpa-onnx/onnxruntime runtime DLLs from the module cache to repo root
+    cmds: [bash scripts/copy-sherpa-dlls.sh]
   test: { desc: Run Go tests, cmds: [go test ./...] }
   fmt:  { desc: Format Go sources, cmds: [go fmt ./...] }
   fix:  { desc: Apply go fix, cmds: [go fix ./...] }
