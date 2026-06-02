@@ -23,7 +23,7 @@ func TestDiarize_Integration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 	if d.SampleRate() != 16000 {
 		t.Fatalf("sample rate = %d want 16000", d.SampleRate())
 	}

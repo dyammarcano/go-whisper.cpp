@@ -13,7 +13,8 @@ type Segment struct {
 // LabeledSegment is a Segment annotated with the dominant speaker (-1 if no turn overlaps).
 type LabeledSegment struct {
 	Segment
-	Speaker int
+
+	Speaker int // -1 if no diarization turn overlaps
 }
 
 // Label assigns each segment the speaker whose turn has the greatest temporal overlap
@@ -34,14 +35,8 @@ func Label(segs []Segment, turns []Turn) []LabeledSegment {
 
 // overlap returns the duration [aStart,aEnd] and [bStart,bEnd] share (0 if disjoint).
 func overlap(aStart, aEnd, bStart, bEnd time.Duration) time.Duration {
-	start := aStart
-	if bStart > start {
-		start = bStart
-	}
-	end := aEnd
-	if bEnd < end {
-		end = bEnd
-	}
+	start := max(aStart, bStart)
+	end := min(aEnd, bEnd)
 	if end > start {
 		return end - start
 	}
