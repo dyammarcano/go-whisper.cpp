@@ -9,7 +9,7 @@ import (
 const sampleRate = 16000
 
 func samplesFor(d time.Duration) int { return int(d.Seconds() * float64(sampleRate)) }
-func durFor(n int) time.Duration      { return time.Duration(n) * time.Second / sampleRate }
+func durFor(n int) time.Duration     { return time.Duration(n) * time.Second / sampleRate }
 
 // streamBuffer is a bounded PCM ring fed by write and drained by nextWindow.
 // All durations are absolute, measured from stream start.
@@ -23,7 +23,7 @@ type streamBuffer struct {
 	dropCap  time.Duration
 	dropped  bool
 	closed   bool
-	ctx      context.Context
+	ctx      context.Context //nolint:containedctx // goroutine waiting on ctx.Done() is bound to this ctx for the buffer's lifetime
 }
 
 // newStreamBuffer builds a buffer. blockCap>0 => block mode; dropCap>0 => drop mode.
@@ -57,10 +57,7 @@ func (b *streamBuffer) write(samples []float32) error {
 	b.pcm = append(b.pcm, samples...)
 	b.consumed += durFor(len(samples))
 	if b.dropCap > 0 && (b.consumed-b.start) > b.dropCap {
-		trim := samplesFor((b.consumed - b.start) - b.dropCap)
-		if trim > len(b.pcm) {
-			trim = len(b.pcm)
-		}
+		trim := min(samplesFor((b.consumed-b.start)-b.dropCap), len(b.pcm))
 		b.pcm = append(b.pcm[:0], b.pcm[trim:]...)
 		b.start += durFor(trim)
 		b.dropped = true
@@ -94,10 +91,7 @@ func (b *streamBuffer) nextWindow(sinceConsumed, step, window time.Duration) (
 			off := 0
 			if b.consumed-b.start > window {
 				ws = b.consumed - window
-				off = samplesFor(ws - b.start)
-				if off > len(b.pcm) {
-					off = len(b.pcm)
-				}
+				off = min(samplesFor(ws-b.start), len(b.pcm))
 			}
 			out := make([]float32, len(b.pcm)-off)
 			copy(out, b.pcm[off:])
@@ -116,10 +110,7 @@ func (b *streamBuffer) slide(newStart time.Duration) {
 	if newStart <= b.start {
 		return
 	}
-	trim := samplesFor(newStart - b.start)
-	if trim > len(b.pcm) {
-		trim = len(b.pcm)
-	}
+	trim := min(samplesFor(newStart-b.start), len(b.pcm))
 	b.pcm = append(b.pcm[:0], b.pcm[trim:]...)
 	b.start += durFor(trim)
 	b.cond.Broadcast()

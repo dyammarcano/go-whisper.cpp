@@ -79,7 +79,7 @@ func TestStreamBuffer_SlideDiscards(t *testing.T) {
 	b := newStreamBuffer(rate, 0, 0, context.Background())
 	_ = b.write(ones(5 * time.Second))
 	b.slide(3 * time.Second)
-	pcm, ws, _, _, _, _ := b.nextWindow(0, time.Second, 10*time.Second)
+	pcm, ws, _, _, _, _ := b.nextWindow(0, time.Second, 10*time.Second) //nolint:dogsled
 	if ws != 3*time.Second || durFor(len(pcm)) != 2*time.Second {
 		t.Errorf("after slide want start=3s len=2s, got start=%v len=%v", ws, durFor(len(pcm)))
 	}

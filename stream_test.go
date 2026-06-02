@@ -38,10 +38,7 @@ func TestStream_Integration(t *testing.T) {
 	go func() {
 		const chunk = 16000 / 2 // 0.5s @ 16kHz
 		for i := 0; i < len(samples); i += chunk {
-			end := i + chunk
-			if end > len(samples) {
-				end = len(samples)
-			}
+			end := min(i+chunk, len(samples))
 			if err := st.Write(samples[i:end]); err != nil {
 				return
 			}

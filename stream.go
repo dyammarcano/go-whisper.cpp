@@ -11,7 +11,7 @@ import (
 // Session.NewStream. Feed 16 kHz mono audio with Write; read updates from Results; signal
 // end of audio with CloseSend; abort with Close. Not safe for concurrent Write calls.
 type Stream struct {
-	ctx        context.Context
+	ctx        context.Context //nolint:containedctx // worker goroutine and blocking waiters are bound to this ctx for the Stream's lifetime
 	cancel     context.CancelFunc
 	session    *Session
 	ownSession bool

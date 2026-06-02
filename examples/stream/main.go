@@ -4,6 +4,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -13,38 +14,38 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	if len(os.Args) != 3 {
-		fmt.Fprintln(os.Stderr, "usage: stream <model.bin> <audio.wav>")
-		os.Exit(2)
+		return errors.New("usage: stream <model.bin> <audio.wav>")
 	}
 	m, err := whisper.New(os.Args[1])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "load model:", err)
-		os.Exit(1)
+		return fmt.Errorf("load model: %w", err)
 	}
 	defer func() { _ = m.Close() }()
 
 	samples, err := wav.ReadFile(os.Args[2])
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "read wav:", err)
-		os.Exit(1)
+		return fmt.Errorf("read wav: %w", err)
 	}
 
 	st, err := m.NewStream(context.Background(),
 		whisper.WithStreamStep(500*time.Millisecond),
 		whisper.WithTranscribeOptions(whisper.WithLanguage("en")))
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "new stream:", err)
-		os.Exit(1)
+		return fmt.Errorf("new stream: %w", err)
 	}
 
 	go func() {
 		const chunk = 16000 / 2 // 0.5s
 		for i := 0; i < len(samples); i += chunk {
-			end := i + chunk
-			if end > len(samples) {
-				end = len(samples)
-			}
+			end := min(i+chunk, len(samples))
 			_ = st.Write(samples[i:end])
 			time.Sleep(50 * time.Millisecond) // simulate real-time-ish arrival
 		}
@@ -56,10 +57,10 @@ func main() {
 		if r.Partial {
 			tag = "partial"
 		}
-		fmt.Printf("[%s %6.2fs-%6.2fs]%s\n", tag, r.Segment.Start.Seconds(), r.Segment.End.Seconds(), r.Segment.Text)
+		_, _ = fmt.Fprintf(os.Stdout, "[%s %6.2fs-%6.2fs]%s\n", tag, r.Segment.Start.Seconds(), r.Segment.End.Seconds(), r.Segment.Text)
 	}
 	if err := st.Err(); err != nil {
-		fmt.Fprintln(os.Stderr, "stream error:", err)
-		os.Exit(1)
+		return fmt.Errorf("stream error: %w", err)
 	}
+	return nil
 }
