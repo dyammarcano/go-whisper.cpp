@@ -51,9 +51,8 @@ README.md               Diarization section                                     
 Run:
 ```bash
 go get github.com/k2-fsa/sherpa-onnx-go@v1.13.2
-go mod tidy
 ```
-Expected: `go.mod` requires `github.com/k2-fsa/sherpa-onnx-go v1.13.2`; `go mod tidy` resolves the platform module (sherpa-onnx-go-windows on this box) as indirect and downloads the vendored DLLs into the module cache. (No package imports it yet, so tidy may drop it — if so, defer this `go get` to Task 2/3 where it's first imported. Verify with `go list -m github.com/k2-fsa/sherpa-onnx-go`.)
+Expected: `go.mod` requires `github.com/k2-fsa/sherpa-onnx-go v1.13.2` and `go.sum` is populated; the platform module (sherpa-onnx-go-windows on this box) + its vendored DLLs download into the module cache. **Do NOT run `go mod tidy` here** — no package imports the dep until Task 3, and tidy would drop the unused require. (`go get` adds the require even without an importer.) `go mod tidy` runs in Task 3 Step 4 once `diarize.go` imports it. Verify with `go list -m github.com/k2-fsa/sherpa-onnx-go`.
 
 - [ ] **Step 2: Write `scripts/download-diarize-models.sh`** (SHA256-verified)
 
@@ -128,7 +127,7 @@ git commit -m "build(diarize): add sherpa-onnx-go dep + model/DLL provisioning"
 
 **Files:** Create (throwaway) `_spike/main.go`; remove after.
 
-**Purpose:** confirm MinGW gcc 15.2 / Go 1.26 link & RUN the v1.13.2 prebuilt DLLs without a CRT mismatch, BEFORE building the wrapper. If this fails, STOP and escalate (try an older sherpa-onnx-go tag, or build sherpa-onnx from source).
+**Purpose:** confirm the toolchain (MinGW gcc 15.2; module `go 1.25`, dev-box toolchain go1.26.x; CI pins go-version 1.25) links & RUNS the v1.13.2 prebuilt DLLs without a CRT mismatch, BEFORE building the wrapper. If this fails, STOP and escalate (try an older sherpa-onnx-go tag, or build sherpa-onnx from source).
 
 - [ ] **Step 1: Provision models + DLLs**
 
@@ -169,6 +168,10 @@ func main() {
 	w := sherpa.ReadWave(os.Args[1]) // a 16kHz mono wav
 	if w == nil {
 		fmt.Fprintln(os.Stderr, "bad wave")
+		os.Exit(1)
+	}
+	if w.SampleRate != sd.SampleRate() {
+		fmt.Fprintf(os.Stderr, "wav rate %d != required %d\n", w.SampleRate, sd.SampleRate())
 		os.Exit(1)
 	}
 	for _, s := range sd.Process(w.Samples) {
@@ -381,15 +384,16 @@ func secondsToDuration(s float32) time.Duration {
 
 Run:
 ```bash
+go mod tidy   # diarize.go now imports sherpa-onnx-go -> records it + the platform module (indirect)
 CGO_ENABLED=1 go build ./diarize/...
 go vet ./diarize/...
 ```
-Expected: clean. (The DLLs from Task 1 must be in the module cache; linking uses the baked-in cgo LDFLAGS.)
+Expected: clean; `go.mod` now firmly requires sherpa-onnx-go. The vendored DLLs are in the module cache; linking uses the baked-in cgo LDFLAGS (no extra flags). (`go vet`/`go build` only LINK the libs — no DLLs-on-PATH needed yet; that's only for RUNNING a binary, Task 4+.)
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add diarize/errors.go diarize/options.go diarize/diarize.go
+git add diarize/errors.go diarize/options.go diarize/diarize.go go.mod go.sum
 git commit -m "feat(diarize): Diarizer over sherpa-onnx (pyannote models, no Python)"
 ```
 
@@ -514,8 +518,12 @@ func overlap(aStart, aEnd, bStart, bEnd time.Duration) time.Duration {
 
 - [ ] **Step 4: Run to verify it passes**
 
-Run: `go test ./diarize/ -run TestLabel -v`
-Expected: PASS (both tests, all sub-cases). This is pure Go — no cgo/models/DLLs.
+IMPORTANT (Windows): package `diarize` imports sherpa-onnx-go (cgo), so the test binary **load-links the 3 sherpa DLLs at startup** — even for the pure-Go `TestLabel`. They must be on PATH / in the CWD or the binary won't start. Provision them first:
+```bash
+task diarize:dlls   # copies onnxruntime.dll + sherpa-onnx-c-api.dll + sherpa-onnx-cxx-api.dll to repo root
+go test ./diarize/ -run TestLabel -v
+```
+Expected: PASS (both tests, all sub-cases). The test LOGIC is pure Go (no models needed), but the DLLs must be present for the process to launch.
 
 - [ ] **Step 5: Commit**
 
@@ -568,6 +576,9 @@ func TestDiarize_Integration(t *testing.T) {
 	if w == nil {
 		t.Fatalf("ReadWave(%q) failed", wavPath)
 	}
+	if w.SampleRate != d.SampleRate() {
+		t.Fatalf("wav rate %d != required %d", w.SampleRate, d.SampleRate())
+	}
 	turns, err := d.Diarize(w.Samples)
 	if err != nil {
 		t.Fatalf("Diarize: %v", err)
@@ -599,6 +610,7 @@ func TestDiarize_EmptyAndClosed(t *testing.T) {
 
 - [ ] **Step 2: Run the gated test without env (confirms skip)**
 
+(Windows: the sherpa DLLs must be present for the test binary to start — run `task diarize:dlls` if not already done in Task 4.)
 Run: `go test ./diarize/ -run TestDiarize -v`
 Expected: `TestDiarize_Integration` SKIPS (env unset); `TestDiarize_EmptyAndClosed` PASSES.
 
@@ -669,6 +681,10 @@ func main() {
 	w := sherpa.ReadWave(*wavPath)
 	if w == nil {
 		fmt.Fprintln(os.Stderr, "read wav failed:", *wavPath)
+		os.Exit(1)
+	}
+	if w.SampleRate != d.SampleRate() {
+		fmt.Fprintf(os.Stderr, "wav rate %d != required %d\n", w.SampleRate, d.SampleRate())
 		os.Exit(1)
 	}
 	turns, err := d.Diarize(w.Samples)
@@ -794,13 +810,19 @@ Append to `.github/workflows/ci.yml` under `jobs:`:
         if: runner.os == 'Windows'
         uses: msys2/setup-msys2@v2
         with: { msystem: UCRT64, path-type: inherit, install: mingw-w64-ucrt-x86_64-gcc }
-      - name: Build diarize + run merge tests
-        env: { CGO_ENABLED: '1' }
+      - name: Build diarize (link-verify, both OSes)
+        env: { CC: gcc, CXX: g++, CGO_ENABLED: '1' }
         run: |
+          go mod download
           go build ./diarize/...
+      - name: Provision DLLs + run merge tests (Windows)
+        if: runner.os == 'Windows'
+        env: { CC: gcc, CXX: g++, CGO_ENABLED: '1' }
+        run: |
+          bash scripts/copy-sherpa-dlls.sh "$PWD"
           go test ./diarize/ -run 'TestLabel' -v
 ```
-> The diarize package links the prebuilt sherpa-onnx-go DLLs (downloaded into the module cache by `go build`). The pure-Go `TestLabel` runs without models. The gated integration test skips.
+> `go build ./diarize/...` only LINKS the sherpa libs (their `-L` path is the module cache) — that's why build-verify works on both ubuntu+windows. RUNNING any `diarize` test binary load-links the DLLs, so the test step (Windows) first copies them to CWD via `copy-sherpa-dlls.sh`. The gated integration test skips (no model env). Linux test execution needs `LD_LIBRARY_PATH` to the `.so` dir — deferred (build-verify only on ubuntu). Mirrors the existing `build-test` job's `CC: gcc, CXX: g++` convention.
 
 - [ ] **Step 2: Add a "Speaker diarization" section to `README.md`**
 
