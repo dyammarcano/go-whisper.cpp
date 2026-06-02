@@ -3,6 +3,7 @@ module github.com/dyammarcano/go-whisper.cpp
 go 1.25.0
 
 require (
+	github.com/k2-fsa/sherpa-onnx-go v1.13.2
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.28.0
 )
@@ -12,7 +13,9 @@ require (
 	github.com/go-task/slim-sprig v0.0.0-20230315185526-52ccab3ef572 // indirect
 	github.com/google/go-cmp v0.5.9 // indirect
 	github.com/google/pprof v0.0.0-20210407192527-94a9f03dee38 // indirect
-	github.com/k2-fsa/sherpa-onnx-go v1.13.2 // indirect
+	github.com/k2-fsa/sherpa-onnx-go-linux v1.13.2 // indirect
+	github.com/k2-fsa/sherpa-onnx-go-macos v1.13.2 // indirect
+	github.com/k2-fsa/sherpa-onnx-go-windows v1.13.2 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/sys v0.12.0 // indirect
 	golang.org/x/text v0.12.0 // indirect
