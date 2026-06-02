@@ -11,6 +11,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	seg := flag.String("seg", "models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx", "segmentation model")
 	emb := flag.String("emb", "models/wespeaker_en_voxceleb_resnet34_LM.onnx", "embedding model")
 	wavPath := flag.String("f", "models/4speakers.wav", "16 kHz mono wav")
@@ -26,26 +33,23 @@ func main() {
 	}
 	d, err := diarize.New(*seg, *emb, opts...)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "new:", err)
-		os.Exit(1)
+		return fmt.Errorf("new: %w", err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
 
 	w := sherpa.ReadWave(*wavPath)
 	if w == nil {
-		fmt.Fprintln(os.Stderr, "read wav failed:", *wavPath)
-		os.Exit(1)
+		return fmt.Errorf("read wav failed: %s", *wavPath)
 	}
 	if w.SampleRate != d.SampleRate() {
-		fmt.Fprintf(os.Stderr, "wav rate %d != required %d\n", w.SampleRate, d.SampleRate())
-		os.Exit(1)
+		return fmt.Errorf("wav rate %d != required %d", w.SampleRate, d.SampleRate())
 	}
 	turns, err := d.Diarize(w.Samples)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "diarize:", err)
-		os.Exit(1)
+		return fmt.Errorf("diarize: %w", err)
 	}
 	for _, t := range turns {
-		fmt.Printf("[%s -> %s] speaker %d\n", t.Start, t.End, t.Speaker)
+		_, _ = fmt.Fprintf(os.Stdout, "[%s -> %s] speaker %d\n", t.Start, t.End, t.Speaker)
 	}
+	return nil
 }

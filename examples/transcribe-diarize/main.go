@@ -12,6 +12,13 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	model := flag.String("m", "models/ggml-tiny.en.bin", "whisper ggml model")
 	seg := flag.String("seg", "models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx", "segmentation model")
 	emb := flag.String("emb", "models/wespeaker_en_voxceleb_resnet34_LM.onnx", "embedding model")
@@ -21,20 +28,18 @@ func main() {
 
 	samples, err := wav.ReadFile(*audio)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "read wav:", err)
-		os.Exit(1)
+		return fmt.Errorf("read wav: %w", err)
 	}
 
 	m, err := whisper.New(*model)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "whisper:", err)
-		os.Exit(1)
+		return fmt.Errorf("whisper: %w", err)
 	}
-	defer m.Close()
+	defer func() { _ = m.Close() }()
+
 	res, err := m.Transcribe(context.Background(), samples)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "transcribe:", err)
-		os.Exit(1)
+		return fmt.Errorf("transcribe: %w", err)
 	}
 
 	opts := []diarize.Option{diarize.WithThreshold(0.5)}
@@ -43,14 +48,13 @@ func main() {
 	}
 	d, err := diarize.New(*seg, *emb, opts...)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "diarize:", err)
-		os.Exit(1)
+		return fmt.Errorf("diarize: %w", err)
 	}
-	defer d.Close()
+	defer func() { _ = d.Close() }()
+
 	turns, err := d.Diarize(samples)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, "diarize:", err)
-		os.Exit(1)
+		return fmt.Errorf("diarize: %w", err)
 	}
 
 	segs := make([]diarize.Segment, len(res.Segments))
@@ -58,6 +62,7 @@ func main() {
 		segs[i] = diarize.Segment{Start: s.Start, End: s.End, Text: s.Text}
 	}
 	for _, ls := range diarize.Label(segs, turns) {
-		fmt.Printf("[Speaker %d] %s\n", ls.Speaker, ls.Text)
+		_, _ = fmt.Fprintf(os.Stdout, "[Speaker %d] %s\n", ls.Speaker, ls.Text)
 	}
+	return nil
 }
