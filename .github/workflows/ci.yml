@@ -64,3 +64,32 @@ jobs:
           go build -tags vulkan ./...
       # NOTE: CUDA build-verify needs the CUDA toolkit + MSVC on the runner; deferred to a
       # self-hosted GPU runner (it also runs the GPU execution tests). Documented in README.
+  diarize-build:
+    # Build the diarize package + run the pure-Go merge tests. The integration test is
+    # env-gated and skips without models/DLLs (model downloads + GPU not run in CI here).
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with: { submodules: recursive }
+      - uses: actions/setup-go@v5
+        with: { go-version: '1.25' }
+      - name: Setup MinGW (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with: { msystem: UCRT64, path-type: inherit, install: mingw-w64-ucrt-x86_64-gcc }
+      - name: Build diarize (link-verify, both OSes)
+        env: { CC: gcc, CXX: g++, CGO_ENABLED: '1' }
+        run: |
+          go mod download
+          go build ./diarize/...
+      - name: Provision DLLs + run merge tests (Windows)
+        if: runner.os == 'Windows'
+        env: { CC: gcc, CXX: g++, CGO_ENABLED: '1' }
+        run: |
+          bash scripts/copy-sherpa-dlls.sh "$PWD"
+          go test -c -o diarize.test.exe ./diarize/
+          ./diarize.test.exe -test.run TestLabel -test.v

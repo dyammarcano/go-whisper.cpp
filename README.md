@@ -128,6 +128,96 @@ ffmpeg -i input.mp3 -ar 16000 -ac 1 output.wav
 
 The `wav` package is pure Go with no cgo dependency.
 
+## Speaker diarization (`diarize` package)
+
+The `diarize` package answers **"who spoke when"** — natively, with **no Python**. It wraps
+[sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) running the **pyannote segmentation-3.0**
+(MIT-licensed) + **WeSpeaker** embedding models through ONNX Runtime. It is **CPU-only** (GPU
+diarization is deferred) and depends only on `sherpa-onnx-go` — never on the whisper.cpp binding,
+so the two cgo deps stay decoupled. Input is the same **16 kHz mono float32** as whisper.
+
+### Provision the models + runtime DLLs
+
+```sh
+task models:diarize   # downloads pyannote seg-3.0 (MIT) + WeSpeaker embedding into ./models/
+task diarize:dlls     # copies onnxruntime.dll + sherpa-onnx-c-api.dll + sherpa-onnx-cxx-api.dll
+```
+
+`task diarize:dlls` copies the three runtime DLLs from the Go module cache to the repo root. The
+**DLLs must sit beside the executable** you run (Go searches the exe's directory before `System32`).
+
+### Standalone diarization
+
+```go
+d, err := diarize.New(
+    "models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx",
+    "models/wespeaker_en_voxceleb_resnet34_LM.onnx",
+    diarize.WithThreshold(0.5), // unknown speaker count
+)
+if err != nil {
+    log.Fatal(err)
+}
+defer d.Close()
+
+// samples is 16 kHz mono float32 (use wav.ReadFile or sherpa.ReadWave).
+turns, err := d.Diarize(samples)
+if err != nil {
+    log.Fatal(err)
+}
+for _, t := range turns {
+    fmt.Printf("[%s -> %s] speaker %d\n", t.Start, t.End, t.Speaker)
+}
+```
+
+Each `Turn` is `{Start, End time.Duration; Speaker int}`. Choose the clustering strategy:
+
+- **`diarize.WithNumSpeakers(n)`** — force exactly `n` speakers (use when the count is known).
+- **`diarize.WithThreshold(t)`** — auto-detect the count (larger `t` => fewer speakers; default 0.5).
+
+These are mutually exclusive — whichever is applied last wins. Other options:
+`WithMinDuration(on, off)`, `WithThreads(n)`, `WithDebug`.
+
+> **Speaker IDs are per-file** — a 0-based id is stable within one recording but is **not**
+> comparable across different recordings.
+
+### Labeling a transcript (whisper + diarize)
+
+`diarize.Label` assigns each transcript segment the speaker whose turn has the greatest temporal
+overlap (`-1` if none). It operates on the package-local `diarize.Segment` type so `diarize` never
+imports the whisper binding — callers map `whisper.Segment` -> `diarize.Segment` in two lines:
+
+```go
+segs := make([]diarize.Segment, len(res.Segments))
+for i, s := range res.Segments {
+    segs[i] = diarize.Segment{Start: s.Start, End: s.End, Text: s.Text}
+}
+for _, ls := range diarize.Label(segs, turns) {
+    fmt.Printf("[Speaker %d] %s\n", ls.Speaker, ls.Text)
+}
+```
+
+See [`examples/diarize`](examples/diarize) (standalone) and
+[`examples/transcribe-diarize`](examples/transcribe-diarize) (whisper transcript + speaker labels).
+The combo example links **both** whisper.cpp and ONNX Runtime, so it needs `task build:cpu` (whisper
+static libs) **and** `task diarize:dlls` (the sherpa DLLs) plus both model sets.
+
+### Running the diarize tests (Windows)
+
+A stale `C:\Windows\System32\onnxruntime.dll` (an older ONNX Runtime) can **shadow** the bundled
+1.24.x and crash any `diarize` test binary with *"The requested API version is not available"*.
+`go test ./diarize/` builds the test exe in a temp dir with no DLLs beside it, so `System32` wins.
+Instead, compile the test exe **into the repo root next to the DLLs** and run it there:
+
+```sh
+task diarize:dlls
+go test -c -o diarize.test.exe ./diarize/
+./diarize.test.exe -test.run TestLabel -test.v
+rm -f diarize.test.exe
+```
+
+The integration test (`TestDiarize_Integration`) is **env-gated** — set `DIARIZE_SEG_MODEL`,
+`DIARIZE_EMB_MODEL`, and `DIARIZE_WAV` to run it; otherwise it skips.
+
 ## Running tests
 
 ```sh
