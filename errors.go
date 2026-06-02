@@ -13,6 +13,12 @@ var (
 	ErrCanceled   = errors.New("whisper: transcription canceled")
 	ErrEmptyAudio = errors.New("whisper: empty audio (no samples)")
 	ErrClosed     = errors.New("whisper: use of closed model or session")
+
+	// ErrStreamClosed is returned by Stream.Write/CloseSend after the stream is closed.
+	ErrStreamClosed = errors.New("whisper: stream closed")
+
+	// ErrConfig indicates invalid configuration.
+	ErrConfig = errors.New("whisper: invalid config")
 )
 
 // abortFlag is a goroutine-safe one-shot flag read by the abort trampoline.
