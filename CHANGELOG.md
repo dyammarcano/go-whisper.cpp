@@ -5,7 +5,9 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.2.0] - 2026-06-02
+
+Adds real-time / streaming transcription on top of v0.1.0.
 
 ### Added
 
@@ -51,4 +53,5 @@ native speaker diarization. (Real-time streaming is planned for a later release.
 - **SHA256-pinned the diarization model downloads** (pyannote segmentation + WeSpeaker
   embedding); mismatches abort and re-fetch.
 
+[0.2.0]: https://github.com/dyammarcano/go-whisper.cpp/releases/tag/v0.2.0
 [0.1.0]: https://github.com/dyammarcano/go-whisper.cpp/releases/tag/v0.1.0
