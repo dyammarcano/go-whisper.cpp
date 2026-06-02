@@ -518,12 +518,14 @@ func overlap(aStart, aEnd, bStart, bEnd time.Duration) time.Duration {
 
 - [ ] **Step 4: Run to verify it passes**
 
-IMPORTANT (Windows): package `diarize` imports sherpa-onnx-go (cgo), so the test binary **load-links the 3 sherpa DLLs at startup** — even for the pure-Go `TestLabel`. They must be on PATH / in the CWD or the binary won't start. Provision them first:
+IMPORTANT (Windows DLL-shadow, verified in the Phase-0 spike): package `diarize` imports sherpa-onnx-go (cgo), so the test binary **load-links the 3 sherpa DLLs at startup** — even for pure-Go `TestLabel`. Windows searches the **exe's own directory first, then System32** — and a stale `C:\Windows\System32\onnxruntime.dll` (older ORT) shadows the bundled 1.24.x, crashing with "The requested API version [N] is not available". `go test ./diarize/` builds the test exe in a TEMP dir (no DLLs there → System32 wins → crash). So **compile the test binary into the DLL dir and run it there**:
 ```bash
-task diarize:dlls   # copies onnxruntime.dll + sherpa-onnx-c-api.dll + sherpa-onnx-cxx-api.dll to repo root
-go test ./diarize/ -run TestLabel -v
+task diarize:dlls                               # copy the 3 DLLs to repo root
+go test -c -o diarize.test.exe ./diarize/       # build test exe AT repo root (beside the DLLs)
+./diarize.test.exe -test.run TestLabel -test.v  # exe-dir search finds the bundled ORT first
+rm -f diarize.test.exe
 ```
-Expected: PASS (both tests, all sub-cases). The test LOGIC is pure Go (no models needed), but the DLLs must be present for the process to launch.
+Expected: PASS (both tests, all sub-cases). The test LOGIC is pure Go (no models needed); the DLLs must sit **beside the test exe** so the correct ORT loads.
 
 - [ ] **Step 5: Commit**
 
@@ -610,8 +612,12 @@ func TestDiarize_EmptyAndClosed(t *testing.T) {
 
 - [ ] **Step 2: Run the gated test without env (confirms skip)**
 
-(Windows: the sherpa DLLs must be present for the test binary to start — run `task diarize:dlls` if not already done in Task 4.)
-Run: `go test ./diarize/ -run TestDiarize -v`
+(Windows: compile the test exe beside the DLLs — see Task 4 Step 4 — to avoid the System32 ORT shadow.)
+Run:
+```bash
+go test -c -o diarize.test.exe ./diarize/
+./diarize.test.exe -test.run TestDiarize -test.v
+```
 Expected: `TestDiarize_Integration` SKIPS (env unset); `TestDiarize_EmptyAndClosed` PASSES.
 
 - [ ] **Step 3: Run the full integration with models + DLLs**
@@ -620,10 +626,11 @@ Run:
 ```bash
 task models:diarize && task diarize:dlls
 curl -fL https://github.com/k2-fsa/sherpa-onnx/releases/download/speaker-segmentation-models/0-four-speakers-zh.wav -o models/4speakers.wav
+go test -c -o diarize.test.exe ./diarize/
 DIARIZE_SEG_MODEL="$(pwd)/models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx" \
 DIARIZE_EMB_MODEL="$(pwd)/models/wespeaker_en_voxceleb_resnet34_LM.onnx" \
 DIARIZE_WAV="$(pwd)/models/4speakers.wav" \
-go test ./diarize/ -run TestDiarize_Integration -v
+./diarize.test.exe -test.run TestDiarize_Integration -test.v
 ```
 Expected: PASS — logs `turns=N speakers>=2` (the 4-speaker clip should yield ~4 with threshold 0.5; the assertion only requires >=2). DLLs at repo root satisfy the loader.
 > If paths with `$(pwd)` (MSYS `/d/...`) fail to load the ONNX models, use native Windows paths (`D:\...`), mirroring the whisper TEST_MODEL note.
@@ -820,7 +827,8 @@ Append to `.github/workflows/ci.yml` under `jobs:`:
         env: { CC: gcc, CXX: g++, CGO_ENABLED: '1' }
         run: |
           bash scripts/copy-sherpa-dlls.sh "$PWD"
-          go test ./diarize/ -run 'TestLabel' -v
+          go test -c -o diarize.test.exe ./diarize/
+          ./diarize.test.exe -test.run TestLabel -test.v
 ```
 > `go build ./diarize/...` only LINKS the sherpa libs (their `-L` path is the module cache) — that's why build-verify works on both ubuntu+windows. RUNNING any `diarize` test binary load-links the DLLs, so the test step (Windows) first copies them to CWD via `copy-sherpa-dlls.sh`. The gated integration test skips (no model env). Linux test execution needs `LD_LIBRARY_PATH` to the `.so` dir — deferred (build-verify only on ubuntu). Mirrors the existing `build-test` job's `CC: gcc, CXX: g++` convention.
 
