@@ -81,6 +81,8 @@ func (s *Session) newStream(ctx context.Context, own bool, opts ...StreamOption)
 }
 
 // Write feeds 16 kHz mono samples. Blocks (backpressure) or drops oldest per policy.
+// If the consumer stops draining Results, Write will block and the worker is stranded
+// until Close is called.
 func (st *Stream) Write(samples []float32) error {
 	if st.ctx.Err() != nil {
 		return st.ctx.Err()
@@ -98,6 +100,7 @@ func (st *Stream) CloseSend() error {
 }
 
 // Results returns the channel of ordered partial+final updates. Closed when the stream ends.
+// The consumer MUST drain this channel (or call Close) to let the stream finish and release resources.
 func (st *Stream) Results() <-chan StreamResult { return st.results }
 
 // Err returns the terminal error (nil on clean EOF). Valid once Results is closed.
@@ -141,6 +144,7 @@ func (st *Stream) appendPrompt(s string) {
 
 func (st *Stream) run() {
 	defer st.wg.Done()
+	defer st.cancel()         // release ctx + stop the buffer's wakeup goroutine on any worker exit
 	defer close(st.results)
 
 	var since time.Duration // consumed mark at the last run

@@ -3,6 +3,7 @@ package whisper_test
 import (
 	"context"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -77,4 +78,50 @@ func TestStream_Integration(t *testing.T) {
 	if !sawPartial {
 		t.Log("warning: no partial observed (acceptable for a short clip, but unexpected)")
 	}
+}
+
+func TestStream_NoGoroutineLeakOnCloseSend(t *testing.T) {
+	mp := os.Getenv("TEST_MODEL")
+	if mp == "" {
+		t.Skip("set TEST_MODEL to run the leak regression")
+	}
+	m, err := whisper.New(mp)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer func() { _ = m.Close() }()
+
+	silence := make([]float32, 16000) // 1s of silence @16kHz
+	runOne := func() {
+		st, err := m.NewStream(context.Background(), whisper.WithTranscribeOptions(whisper.WithLanguage("en")))
+		if err != nil {
+			t.Fatalf("NewStream: %v", err)
+		}
+		go func() { _ = st.Write(silence); _ = st.CloseSend() }()
+		for range st.Results() {
+		}
+		if err := st.Err(); err != nil {
+			t.Fatalf("stream err: %v", err)
+		}
+		// NOTE: deliberately NOT calling st.Close() — graceful path must self-clean.
+	}
+
+	runOne() // warm up (lazy runtime goroutines)
+	time.Sleep(100 * time.Millisecond)
+	runtime.GC()
+	base := runtime.NumGoroutine()
+	for range 10 {
+		runOne()
+	}
+	// allow goroutines to wind down
+	var n int
+	for range 40 {
+		runtime.GC()
+		n = runtime.NumGoroutine()
+		if n <= base+2 {
+			return // OK
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	t.Fatalf("goroutine leak: baseline %d, after 10 CloseSend-only streams %d (want <= %d)", base, n, base+2)
 }
