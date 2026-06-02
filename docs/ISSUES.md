@@ -30,3 +30,20 @@ no fix was needed there.
   exists on those platforms but has **not** been observed to crash, and CI only
   build-verifies (it does not run the audio-gated cancellation tests). If a mid-inference
   cancellation crash ever surfaces on Linux/macOS, apply the same `-DGGML_OPENMP=OFF` there.
+
+## Limitations (current)
+
+- **Audio input must be 16 kHz mono.** The `wav` package returns `ErrNot16kHz` for other
+  rates and does not downmix; callers must resample/downmix first (e.g. `ffmpeg -ar 16000
+  -ac 1`, or the converter being tracked as [BACKLOG](BACKLOG.md) AI-1). The `diarize` and
+  streaming paths share this contract.
+- **No built-in decoding of compressed audio** (m4a/mp3/...). Decode to PCM WAV first
+  (tracked as BACKLOG AI-3).
+- **Transcription quality is bounded by the chosen model.** `ggml-tiny.en` is English-only;
+  non-English or unclear/conversational audio produces poor output (and whisper's classic
+  repetition/hallucination loop). Use a larger and/or multilingual model for such inputs.
+- **Diarization speaker count depends on clustering settings.** Auto mode (default threshold
+  0.5) can merge similar/short-segment speakers; pass `WithNumSpeakers` or tune
+  `WithThreshold` when the auto count looks wrong.
+- **GPU execution is verified only where hardware exists.** CI build-verifies the `cuda`/
+  `vulkan` tags; runtime GPU paths are exercised on the maintainer's machine.

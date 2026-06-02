@@ -353,6 +353,20 @@ This library is **speech-to-text only**. The following are LLM concepts that do 
 
 Whisper's only decoding choices are greedy vs. beam search plus threshold parameters — all of which are exposed via `TranscribeOption`.
 
+## Documentation
+
+| Doc | Contents |
+|-----|----------|
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | System, transcription, streaming & diarization diagrams (Mermaid) |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Phases, status, test coverage |
+| [docs/MILESTONES.md](docs/MILESTONES.md) | Release milestones (v0.1.0, v0.2.0, planned) |
+| [docs/FEATURES.md](docs/FEATURES.md) | Implemented + proposed features |
+| [docs/BACKLOG.md](docs/BACKLOG.md) · [docs/IMPLEMENTATION_TASKS.md](docs/IMPLEMENTATION_TASKS.md) | Prioritized work + granular tasks |
+| [docs/ISSUES.md](docs/ISSUES.md) · [docs/BUGS.md](docs/BUGS.md) | Known limitations, residual risk, bug tracker |
+| [docs/CONTRIBUTORS.md](docs/CONTRIBUTORS.md) | Build/test/lint workflow + conventions |
+| [docs/adr/](docs/adr/) | Architecture Decision Records |
+| [CHANGELOG.md](CHANGELOG.md) | Release notes |
+
 ## License
 
 [BSD-3-Clause](LICENSE)
