@@ -218,6 +218,34 @@ rm -f diarize.test.exe
 The integration test (`TestDiarize_Integration`) is **env-gated** — set `DIARIZE_SEG_MODEL`,
 `DIARIZE_EMB_MODEL`, and `DIARIZE_WAV` to run it; otherwise it skips.
 
+## Streaming transcription
+
+Feed audio incrementally and receive refining **partial** results plus committed **final**
+segments, via a sliding window over `Transcribe` (whisper itself decodes ≤30 s windows, so
+streaming is a windowing layer — no native incremental decoding).
+
+```go
+st, _ := m.NewStream(ctx,
+    whisper.WithStreamStep(500*time.Millisecond),
+    whisper.WithDropOnOverrun(8*time.Second),                 // live mic: bound latency
+    whisper.WithTranscribeOptions(whisper.WithLanguage("en")))
+
+go func() {
+    for chunk := range mic { _ = st.Write(chunk) }            // []float32, 16 kHz mono
+    _ = st.CloseSend()
+}()
+
+for r := range st.Results() {
+    if r.Partial { redraw(r.Segment.Text) } else { commit(r.Segment.Text) }
+}
+if err := st.Err(); err != nil { /* handle */ }
+```
+
+Tuning: `WithStreamStep` (cadence), `WithStreamWindow` (≤30 s reprocessed each run),
+`WithStreamKeep` (decoder-context overlap). Default is lossless backpressure (`Write`
+blocks); `WithDropOnOverrun` switches to bounded drop-oldest with `StreamResult.Lagging`.
+See [`examples/stream`](examples/stream).
+
 ## Running tests
 
 ```sh
