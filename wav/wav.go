@@ -1,5 +1,6 @@
 // Package wav decodes RIFF/WAVE audio to 16 kHz mono float32 in [-1,1] for whisper.
-// Pure Go, no cgo. Non-16 kHz input is rejected (resample with ffmpeg -ar 16000 -ac 1).
+// Pure Go, no cgo. By default non-16 kHz input is rejected with ErrNot16kHz; pass
+// WithResample to downmix and linearly resample arbitrary PCM to 16 kHz mono.
 package wav
 
 import (
@@ -26,18 +27,33 @@ type fmtChunk struct {
 	bitsPerSample uint16
 }
 
+// ReadOption configures decoding.
+type ReadOption func(*readConfig)
+
+type readConfig struct{ resample bool }
+
+// WithResample makes the decoder accept any sample rate by linearly resampling the
+// (already downmixed-to-mono) signal to 16 kHz, instead of rejecting non-16 kHz input with
+// ErrNot16kHz. See resampleLinear for the quality trade-off (no anti-alias filter).
+func WithResample() ReadOption { return func(c *readConfig) { c.resample = true } }
+
 // ReadFile decodes a WAV file at path.
-func ReadFile(path string) ([]float32, error) {
+func ReadFile(path string, opts ...ReadOption) ([]float32, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	return ReadWAV(f)
+	return ReadWAV(f, opts...)
 }
 
-// ReadWAV decodes a RIFF/WAVE stream to 16 kHz mono float32.
-func ReadWAV(r io.Reader) ([]float32, error) {
+// ReadWAV decodes a RIFF/WAVE stream to 16 kHz mono float32. With WithResample, any input
+// rate is downmixed and resampled to 16 kHz; otherwise non-16 kHz input returns ErrNot16kHz.
+func ReadWAV(r io.Reader, opts ...ReadOption) ([]float32, error) {
+	var cfg readConfig
+	for _, o := range opts {
+		o(&cfg)
+	}
 	var riff [12]byte
 	if _, err := io.ReadFull(r, riff[:]); err != nil {
 		return nil, fmt.Errorf("%w: %w", ErrBadHeader, err)
@@ -80,14 +96,21 @@ func ReadWAV(r io.Reader) ([]float32, error) {
 			if !gotFmt {
 				return nil, errors.New("wav: data chunk before fmt chunk")
 			}
-			if fc.sampleRate != SampleRate {
-				return nil, fmt.Errorf("%w: got %d Hz (resample: ffmpeg -i in -ar 16000 -ac 1 out.wav)", ErrNot16kHz, fc.sampleRate)
+			if fc.sampleRate != SampleRate && !cfg.resample {
+				return nil, fmt.Errorf("%w: got %d Hz (pass wav.WithResample(), or ffmpeg -i in -ar 16000 -ac 1 out.wav)", ErrNot16kHz, fc.sampleRate)
 			}
 			data := make([]byte, size)
 			if _, err := io.ReadFull(r, data); err != nil {
 				return nil, fmt.Errorf("read data chunk: %w", err)
 			}
-			return decodeSamples(data, &fc)
+			samples, err := decodeSamples(data, &fc)
+			if err != nil {
+				return nil, err
+			}
+			if fc.sampleRate != SampleRate {
+				samples = resampleLinear(samples, int(fc.sampleRate), SampleRate)
+			}
+			return samples, nil
 		default:
 			n := int64(size)
 			if size%2 == 1 {

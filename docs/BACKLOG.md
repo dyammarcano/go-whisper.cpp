@@ -17,8 +17,8 @@ No `TODO`/`FIXME`/`HACK` markers exist in the Go sources as of v0.2.0.
 
 | ID | Item | Why | Effort |
 |----|------|-----|--------|
-| AI-1 | Pure-Go resample + downmix in `wav` | `wav` returns `ErrNot16kHz`; every real file (44.1 kHz stereo, 48 kHz) needs pre-conversion today | Medium |
-| AI-2 | `wav` accepts arbitrary channel counts (downmix to mono) | Stereo/multi-channel inputs are common | Small |
+| AI-1 | ✅ **Done** — `wav.WithResample()` (pure-Go downmix + linear resample to 16 kHz) | `wav` returned `ErrNot16kHz`; real files (44.1 kHz stereo, 48 kHz) needed pre-conversion | Medium |
+| AI-2 | ✅ **Done** — `wav` downmixes any channel count (was already implemented; confirmed) | Stereo/multi-channel inputs are common | Small |
 | AI-3 | Optional ffmpeg-decode path for compressed audio | m4a/mp3/etc. can't be read at all without external conversion | Medium |
 
 ## P2 — Diarization & streaming depth

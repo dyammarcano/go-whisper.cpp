@@ -5,6 +5,16 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **`wav.WithResample()`** — opt-in `ReadOption` on `wav.ReadFile`/`wav.ReadWAV` that downmixes
+  to mono and linearly resamples any sample rate to 16 kHz (non-breaking; default still
+  returns `ErrNot16kHz`). Lets the library ingest ordinary audio (e.g. 44.1 kHz stereo)
+  directly instead of requiring pre-conversion. The `transcribe` and `transcribe-diarize`
+  examples gain a `-resample` flag.
+
 ## [0.2.0] - 2026-06-02
 
 Adds real-time / streaming transcription on top of v0.1.0.

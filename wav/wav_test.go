@@ -81,3 +81,49 @@ func TestReadWAV_RejectsBadHeader(t *testing.T) {
 		t.Fatalf("err=%v want ErrBadHeader", err)
 	}
 }
+
+func TestReadWAV_ResampleDownmix44kStereo(t *testing.T) {
+	const frames = 441 // 441 @ 44.1 kHz -> 160 @ 16 kHz
+	samples := make([]int16, frames*2)
+	for i := range samples {
+		samples[i] = 8192 // L=R=0.25 -> mono 0.25
+	}
+	got, err := wav.ReadWAV(bytes.NewReader(buildWAV(44100, 2, samples)), wav.WithResample())
+	if err != nil {
+		t.Fatalf("ReadWAV: %v", err)
+	}
+	if len(got) != 160 {
+		t.Fatalf("len=%d want 160 (16 kHz mono)", len(got))
+	}
+	for i, v := range got {
+		if math.Abs(float64(v-0.25)) > 1e-2 {
+			t.Fatalf("sample %d=%v want ~0.25 (constant must survive downmix+resample)", i, v)
+		}
+	}
+}
+
+func TestReadWAV_Resample8kMonoUpsample(t *testing.T) {
+	const frames = 800 // 800 @ 8 kHz -> 1600 @ 16 kHz
+	samples := make([]int16, frames)
+	for i := range samples {
+		samples[i] = 16384
+	}
+	got, err := wav.ReadWAV(bytes.NewReader(buildWAV(8000, 1, samples)), wav.WithResample())
+	if err != nil {
+		t.Fatalf("ReadWAV: %v", err)
+	}
+	if len(got) != 1600 {
+		t.Fatalf("len=%d want 1600 (16 kHz upsample)", len(got))
+	}
+}
+
+func TestReadWAV_ResampleNoOpAt16k(t *testing.T) {
+	// WithResample on already-16 kHz audio must be a no-op (resampleLinear is not invoked).
+	got, err := wav.ReadWAV(bytes.NewReader(buildWAV(16000, 1, []int16{0, 16384, -16384, 32767})), wav.WithResample())
+	if err != nil {
+		t.Fatalf("ReadWAV: %v", err)
+	}
+	if len(got) != 4 {
+		t.Fatalf("len=%d want 4 (no resample at 16 kHz)", len(got))
+	}
+}

@@ -118,13 +118,17 @@ res, err := s.Transcribe(ctx, samples, whisper.WithLanguage("en"))
 
 ## Audio input (`wav` package)
 
-`wav.ReadFile(path)` and `wav.ReadWAV(r)` decode a RIFF/WAVE file to **16 kHz mono float32** samples in `[-1, 1]` — exactly what whisper.cpp expects.
+`wav.ReadFile(path)` and `wav.ReadWAV(r)` decode a RIFF/WAVE file to **16 kHz mono float32** samples in `[-1, 1]` — exactly what whisper.cpp expects. Any channel count is downmixed to mono, and 8/16/24/32-bit PCM and 32-bit float are supported.
 
-If the file is not 16 kHz, `wav.ErrNot16kHz` is returned. Resample first:
+By default a non-16 kHz file returns `wav.ErrNot16kHz`. Pass `wav.WithResample()` to downmix + linearly resample any rate to 16 kHz mono in pure Go:
 
-```sh
-ffmpeg -i input.mp3 -ar 16000 -ac 1 output.wav
+```go
+samples, err := wav.ReadFile("input.wav", wav.WithResample()) // e.g. 44.1 kHz stereo -> 16 kHz mono
 ```
+
+The `transcribe` and `transcribe-diarize` examples expose this as a `-resample` flag, e.g.
+`go run ./examples/transcribe -f input.wav -resample`. (Linear interpolation, no anti-alias
+filter — adequate for speech-to-text; for hi-fi use `ffmpeg -i input.mp3 -ar 16000 -ac 1 out.wav`.)
 
 The `wav` package is pure Go with no cgo dependency.
 

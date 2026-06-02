@@ -24,6 +24,7 @@ func run() error {
 	lang := flag.String("l", "auto", "language ('auto' to detect)")
 	translate := flag.Bool("translate", false, "translate to English")
 	threads := flag.Int("t", runtime.NumCPU(), "threads")
+	resample := flag.Bool("resample", false, "downmix + resample non-16 kHz input to 16 kHz mono")
 	flag.Parse()
 
 	m, err := whisper.New(*model)
@@ -32,7 +33,11 @@ func run() error {
 	}
 	defer func() { _ = m.Close() }()
 
-	samples, err := wav.ReadFile(*audio)
+	var rdopts []wav.ReadOption
+	if *resample {
+		rdopts = append(rdopts, wav.WithResample())
+	}
+	samples, err := wav.ReadFile(*audio, rdopts...)
 	if err != nil {
 		return fmt.Errorf("read wav: %w", err)
 	}

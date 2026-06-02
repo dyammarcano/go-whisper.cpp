@@ -22,11 +22,16 @@ func run() error {
 	model := flag.String("m", "models/ggml-tiny.en.bin", "whisper ggml model")
 	seg := flag.String("seg", "models/sherpa-onnx-pyannote-segmentation-3-0/model.onnx", "segmentation model")
 	emb := flag.String("emb", "models/wespeaker_en_voxceleb_resnet34_LM.onnx", "embedding model")
-	audio := flag.String("f", "models/4speakers.wav", "16 kHz mono wav")
+	audio := flag.String("f", "models/4speakers.wav", "input wav (16 kHz mono, or any with -resample)")
 	n := flag.Int("n", 0, "number of speakers (0 = auto)")
+	resample := flag.Bool("resample", false, "downmix + resample non-16 kHz input to 16 kHz mono")
 	flag.Parse()
 
-	samples, err := wav.ReadFile(*audio)
+	var rdopts []wav.ReadOption
+	if *resample {
+		rdopts = append(rdopts, wav.WithResample())
+	}
+	samples, err := wav.ReadFile(*audio, rdopts...)
 	if err != nil {
 		return fmt.Errorf("read wav: %w", err)
 	}
