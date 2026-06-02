@@ -32,9 +32,16 @@ fi
 
 # MinGW workaround (same as go-llama): gate THREAD_POWER_THROTTLING_STATE.
 WINVER=""
+# OpenMP is disabled on the MinGW build: ggml's abort_callback is invoked by the
+# compute threadpool DURING ggml_graph_compute, and tearing down a libgomp parallel
+# region from a cgo callback that returns "abort" mid-graph faults (access violation,
+# 0xC0000005) on Windows/MinGW. ggml's own (Win32) threadpool handles mid-compute
+# abort cleanly. The "cancels mid-inference within a bound" test pins this.
+OMP=""
 case "$(uname -s)" in
   MINGW*|MSYS*)
     WINVER="-D_WIN32_WINNT=0x0A00 -DWINVER=0x0A00 -DNTDDI_VERSION=0x0A000007 -DGGML_NO_THREAD_POWER_THROTTLING"
+    OMP="-DGGML_OPENMP=OFF"
     CPUC="$SRC/ggml/src/ggml-cpu/ggml-cpu.c"
     if [ -f "$CPUC" ] && ! grep -q "GGML_NO_THREAD_POWER_THROTTLING" "$CPUC"; then
       sed -i 's/#if _WIN32_WINNT >= 0x0602$/#if _WIN32_WINNT >= 0x0602 \&\& !defined(GGML_NO_THREAD_POWER_THROTTLING)/' "$CPUC"
@@ -46,7 +53,7 @@ rm -rf "$BUILD"
 cmake -S "$SRC" -B "$BUILD" -G "$GEN" \
   -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF \
   -DWHISPER_BUILD_EXAMPLES=OFF -DWHISPER_BUILD_TESTS=OFF -DWHISPER_BUILD_SERVER=OFF \
-  -DWHISPER_SDL2=OFF -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=OFF $EXTRA \
+  -DWHISPER_SDL2=OFF -DGGML_NATIVE=OFF -DGGML_BACKEND_DL=OFF $EXTRA $OMP \
   ${WINVER:+-DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_C_FLAGS="$WINVER" -DCMAKE_CXX_FLAGS="$WINVER"}
 cmake --build "$BUILD" -j
 echo "=== $BACKEND static libs ==="; find "$BUILD" -name '*.a' | sort
